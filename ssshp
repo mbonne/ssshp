@@ -194,8 +194,8 @@ function createSSHTunnel () {
       admin@fqdn -p 8822 -i /path/to/certificate.pem${NOCOLOR}\n"
       ## Getting user input to fill $1 variable if unused - user didn't choose Option 2 "Select SSH Tunnel"
       read -e -r -p "ssh " sshTarget
-      if [ -z "$sshTarget" ]; then
-        echo -e "${RED}*** you need to type something so the script can try to connect ***${NOCOLOR}" >&2
+      if ! ping -c 1 "$(echo "$sshTarget" | cut -d@ -f2 | cut -d' ' -f1)"; then
+        echo -e "${RED}*** Can not Ping host. You need to target a reachable host. Press ctrl+c to quit ***${NOCOLOR}" >&2
       else
         break
       fi
