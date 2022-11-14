@@ -203,9 +203,7 @@ function createSSHTunnel () {
         ## cut after first delimiter character '@', cut everything after first space
         if ! nc -vz "$(echo "$ncTarget" | cut -d@ -f2 | cut -d' ' -f1)" "$testPort"; then
           echo -e "${RED}*** Netcat cannot see open port. You need to target a reachable host. Press ctrl+c to quit ***${NOCOLOR}" >&2
-          echo -e "Target is: $ncTarget"
         else
-          echo -e "Target is: $ncTarget"
           break
         fi
       done
