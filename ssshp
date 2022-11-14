@@ -185,22 +185,31 @@ function createSSHTunnel () {
   activeSSHSessions=$(lsof -i tcp | grep "^ssh" | grep ESTABLISHED)
 
   if [ -z "$activeSSHSessions" ]; then
-  if [ -z "$1" ]; then
-    while true; do
-      echo -e "${GREEN}\n\
-      Enter the usual command arguments for SSH server\n\
-      e.g. admin@192.168.1.1\n\
-      or\n\
-      admin@fqdn -p 8822 -i /path/to/certificate.pem${NOCOLOR}\n"
-      ## Getting user input to fill $1 variable if unused - user didn't choose Option 2 "Select SSH Tunnel"
-      read -e -r -p "ssh " sshTarget
-      if ! ping -c 1 "$(echo "$sshTarget" | cut -d@ -f2 | cut -d' ' -f1)"; then
-        echo -e "${RED}*** Can not Ping host. You need to target a reachable host. Press ctrl+c to quit ***${NOCOLOR}" >&2
-      else
-        break
-      fi
-    done
-  fi
+    if [ -z "$1" ]; then
+      while true; do
+        echo -e "${GREEN}\n\
+        Enter the usual command arguments for SSH server\n\
+        e.g. admin@192.168.1.1\n\
+        or\n\
+        admin@fqdn -p 8822 -i /path/to/certificate.pem${NOCOLOR}\n"
+        ## Getting user input to fill $1 variable if unused - user didn't choose Option 2 "Select SSH Tunnel"
+        read -e -r -p "ssh " sshTarget
+        ## Error handling if user types ssh before the target.
+        [[ $sshTarget =~ ssh[[:space:]]* ]] && ncTarget="$(echo "$sshTarget" | cut -d' ' -f2)"
+        ## Clean any preceeding whitespace https://stackoverflow.com/questions/369758/how-to-trim-whitespace-from-a-bash-variable
+        ncTarget="$(echo -e "${sshTarget}" | sed -e 's/^[[:space:]]*//')"
+        ## Cleanup operation of the sshTarget to isolate just the host address and port number if -p argument used. otherwise use default 22
+        [[ $sshTarget =~ .*-p* ]] && testPort="$(echo "$sshTarget" | awk '{ sub(/.*-p /, ""); sub(/ .*/, ""); print }')" || testPort="22"
+        ## cut after first delimiter character '@', cut everything after first space
+        if ! nc -vz "$(echo "$ncTarget" | cut -d@ -f2 | cut -d' ' -f1)" "$testPort"; then
+          echo -e "${RED}*** Netcat cannot see open port. You need to target a reachable host. Press ctrl+c to quit ***${NOCOLOR}" >&2
+          echo -e "Target is: $ncTarget"
+        else
+          echo -e "Target is: $ncTarget"
+          break
+        fi
+      done
+    fi
     ################################################################################################
     # Configuring SSH Tunnel                                                                       #
     ################################################################################################
