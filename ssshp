@@ -281,14 +281,14 @@ function createSSHTunnel () {
 
 function selectSSHTunnel () {
 
-  if grep name "$ssshpHosts"; then
+  if grep name "$ssshpHosts" > /dev/null ; then
     echo -e "${GREEN}>>> Select SSH Tunnel from saved hosts in $ssshpHosts${NOCOLOR}"
     ## Build list of all hosts saved from previous connections - stored in: "$HOME/.config/ssshp"
     ##https://stackoverflow.com/questions/40558976/bash-script-use-command-output-to-dynamically-create-menu-and-arrays
     #IFS=$'\n' read -d '' -ra lines < <(grep "Host " "$sshConfig" | grep -v '[*]'  | awk '{print $2}')
     IFS=$'\n' read -d '' -ra lines < <(jq -r '.Host[] .name' "$ssshpHosts")
     # Prompt the user to select one of the lines.
-    echo "Select the Host:"
+    echo -e "Select the Host:"
     select choice in "${lines[@]}"; do
       [[ -n $choice ]] || { echo "Invalid choice. Please try again." >&2; continue; }
       break # valid choice was made; exit prompt.
@@ -320,7 +320,6 @@ do
       break
       ;;
     "Select SSH Tunnel")
-      echo -e "${RED}*** This option might not work ***${NOCOLOR}"
       selectSSHTunnel "$@"
       break
       ;;
