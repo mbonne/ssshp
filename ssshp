@@ -1,0 +1,328 @@
+#!/bin/bash
+###===============================================================##
+##
+##            Name:  ssshp
+##          Author:  mbonne
+##         Purpose:  Creates a ssh tunnel and then enables socks proxy to allow web browsing via the remote host.
+##         Created:  2022-11-06
+##   Last Modified:
+##         Version:  1
+##    Source Notes:
+##                  https://blog.emacsos.com/use-socks5-proxy-in-curl.html
+##                  https://unix.stackexchange.com/questions/22615/how-can-i-get-my-external-ip-address-in-a-shell-script
+##                  https://www.hostdime.com/kb/hd/security/browsing-the-internet-through-an-ssh-tunnel-on-macos
+###===============================================================##
+## Known Limitations and Issues:
+## Works on macOS only. Tested with macOS 12.6.1 Monterey
+## The two files "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" could become out of sync.
+##
+## Dependancies:
+## Needs root privilidges as it will change your active NIC Proxy settings.
+## Needs the following files: "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" (Creates them if not found)
+## Needs jq installed: brew install jq
+##
+## How To Use:
+## sudo ./ssshp
+##
+## Then select from the menu.
+##
+## 1. "Make SSH Tunnel" - Takes user input, establishes SSH tunnel and enable SOCKS Proxy on active NIC.
+##                        Presents user with options to, 1. Close connection gracefully, 2. Save settings for later, 3. Exit script and keep connection open.
+##
+## 2. "Select SSH Tunnel" - Let user select from previously saved connections.
+##
+##=======================SCRIPT VARIABLES=========================##
+## Setup the colour codes.
+
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+NOCOLOR="\033[0m"
+
+## Stores the name of active NIC. e.g. "Wi-Fi" "Ethernet" etc
+## https://gist.githubusercontent.com/stewartadam/db9223bb4d50afa94ce9f5250def05e6/raw/2cd2792b6fb8161ac45466e8013077238c0afcb8/macos-network-servicelist.sh
+getActiveNIC() {
+  while read -r line; do
+      sname="$(echo "$line" | sed -E 's|(.*) \(Hardware Port: (.+), Device: (.+)\)|\1|')"
+      #hname="$(echo "$line" | sed -E 's|(.*) \(Hardware Port: (.+), Device: (.+)\)|\2|')"
+      sdev="$(echo "$line" | sed -E 's|(.*) \(Hardware Port: (.+), Device: (.+)\)|\3|')"
+      #echo "Current service: $sname, $sdev, $currentservice"
+      if [ -n "$sdev" ]; then
+          ifout="$(ifconfig "$sdev" 2>/dev/null)"
+          echo "$ifout" | grep 'status: active' > /dev/null 2>&1
+          rc="$?"
+          if [ "$rc" -eq 0 ]; then
+              currentservice="$sname"
+              currentdevice="$sdev"
+              currentmac=$(echo "$ifout" | awk '/ether/{print $2}')
+
+              # may have multiple active devices, so echo it here
+              echo "$currentservice, $currentdevice, $currentmac"
+          fi
+      fi
+  done <<< "$(networksetup -listnetworkserviceorder | awk 'BEGIN { RS = "\\([0-9]\+\\) " ; FS = "\n" } { print $1, $2 }')"
+
+  if [ -z "$currentservice" ]; then
+      >&2 echo "Could not find current service"
+      exit 1
+  fi
+}
+
+##getActiveNIC function returns multiple lines in order of priority in Network prefs. Creating the variable below is selecting the top line only.
+whichNic=$(getActiveNIC @ | head -1 | awk  -F, '{print $1}')
+
+## Because this is running with sudo, We're getting the currently logged in user with this method to be 100% certain when setting the permissions later.
+currentUser=$( scutil <<< "show State:/Users/ConsoleUser" | awk '/Name :/ && ! /loginwindow/ { print $3 }' )
+
+
+##================================================================##
+## Checking dependancies
+
+## This needs to run with sudo
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${RED}*** ERROR: You need to run this script with sudo ***${NOCOLOR}\n>>> This script needs elevated permission to make changes to current network interface."
+  exit 1
+fi
+
+## Check if you have jq installed. Can do this via $ brew install jq
+if [ ! -f "$(which jq)" ]; then
+  echo -e "${RED}*** ERROR: you need to install cli tool jq to run this script ***${NOCOLOR}\n\nRun: brew install jq\n"
+  exit 1
+fi
+
+## Create the server in the built in location for easy usage later. e.g. "ssh server" instead of "ssh admin@1.2.3.4 -p 2222 -i /path/to/cert.pem"
+## https://linuxize.com/post/using-the-ssh-config-file/
+sshConfig="$HOME/.ssh/config"
+if [ ! -f "$sshConfig" ]; then
+  touch "$sshConfig"
+  chown "$currentUser":staff "$sshConfig"
+  chmod 600 "$sshConfig"
+fi
+
+## Save location for use within this script.
+ssshpHosts="$HOME/.ssh/sshpHosts.json"
+if ! grep Host "$ssshpHosts" > /dev/null; then
+  echo -e "${RED}\nIssues with file: $ssshpHosts... Recreating...\n${NOCOLOR}"
+  echo '{"Host": []}' | jq > "$ssshpHosts"
+  chown "$currentUser":staff "$ssshpHosts"
+fi
+
+## I wasn't able to figure out how to use the "$HOME/.ssh/config" file only for the purpose of recalling the settings later.
+## jq has made it slightly easier. TODO: workout a native method without jq using plutil or sed directly on "$HOME/.ssh/config"
+
+##================================================================##
+## Functions
+
+function killTunnel () {
+  sshIP=$(lsof -i tcp | grep ^ssh | head -1 | awk '{print $9}' | sed 's/.*->\(.*\):ssh/\1/')
+  if [ "$1" == true ]; then
+    ssh -S /tmp/sshtunnel -O exit "$sshIP"
+    networksetup -setsocksfirewallproxystate "$whichNic" off
+    networksetup -getsocksfirewallproxy "$whichNic"
+    lsof -i tcp | grep ^ssh
+    echo -e "${GREEN}\nDone.${NOCOLOR}\n"
+    exit 0
+  else
+    echo -e "${GREEN}\nManual Cleanup required\nType the following into terminal:\n\nsudo ssh -S /tmp/sshtunnel -O exit $sshIP\n\nThen, turn off the SOCKS Proxy in Network Prefs for $whichNic\n${NOCOLOR}"
+  fi
+}
+
+
+##================================================================##
+
+function addHostToSSHConf () {
+  sshTarget="$1"
+  echo -e "${GREEN}\n>>> Preparing to add the following to $sshConfig: $sshTarget${NOCOLOR}\n"
+  user="$(echo "$sshTarget" | cut -d@ -f1)"
+  hostName="$(echo "$sshTarget" | cut -d@ -f2 | cut -d' ' -f1)"
+  ## Shorthand if else statements
+  [[ $sshTarget =~ .*-p* ]] && port="$(echo "$sshTarget" | awk '{ sub(/.*-p /, ""); sub(/ .*/, ""); print }')" || port="" ##REGEX  https://www.cyberciti.biz/faq/bash-find-out-if-variable-contains-substring/
+  [[ $sshTarget =~ .*-i* ]] && identityFile="$(echo "$sshTarget" | awk '{ sub(/.*-i /, ""); sub(/ .*/, ""); print }')" || identityFile="" ##REGEX https://www.baeldung.com/linux/bash-substring
+
+  while true; do
+    read -e -r -p "Enter Short name for Host: " shortName
+    if [  -z "$shortName" ] ; then
+      echo -e "${RED}Enter the short name of your Host for easy use later with SSH.\n\
+      Example: myserver or server.domain.com or $HOST\n${NOCOLOR}" >&1
+    elif grep -iw "$shortName" "$sshConfig"; then
+      echo -e "${RED}\nLooks like the Host: $shortName, may already be added to your SSH Config: $sshConfig\nPrinting contents:\n${NOCOLOR}"
+      cat "$sshConfig"
+      break
+    else
+      shortName=$(tr -d ' ' <<< "$shortName") ##https://unix.stackexchange.com/questions/156579/how-do-i-remove-spaces-from-shell-variables
+      shortName=$(tr '[:upper:]' '[:lower:]' <<< "$shortName") ## Convert upper case to lower case.
+      if [ -n "$hostName" ]; then
+        hostName="  HostName $hostName\n"
+      fi
+      if [ -n "$user" ]; then
+        user="  User $user\n"
+      fi
+      if [ -n "$port" ]; then
+        port="  Port $port\n"
+      fi
+      if [ -n "$identityFile" ]; then
+        identityFile="  IdentityFile $identityFile\n"
+      fi
+      echo -e "${GREEN}\nAdding the following to: $sshConfig${NOCOLOR}\nHost $shortName\n$hostName$user$port$identityFile"
+      echo -e "Host $shortName\n$hostName$user$port$identityFile" | cat - "$sshConfig" > temp && mv -f temp "$sshConfig"
+      echo -e "\nYou can now ssh to this server by typing:${GREEN} ssh $shortName\n${NOCOLOR}"
+      jq --arg shortName "$shortName" --arg sshTarget "$sshTarget" ' .Host += [{"name": $shortName, "sshargs": $sshTarget}] ' "$ssshpHosts" > tempjson && mv -f tempjson "$ssshpHosts"
+      chown "$currentUser":staff "$sshConfig"
+      chmod 600 "$sshConfig"
+      chown "$currentUser":staff "$ssshpHosts"
+      echo -e "${GREEN}\nNow either select 1 to gracefully close SOCKS proxy. or 3 to exit and keep SOCKS proxy alive.${NOCOLOR}\n"
+      break
+    fi
+  done
+}
+
+
+##================================================================##
+## Option 1: Make SSH Tunnel
+
+function createSSHTunnel () {
+  echo -e "${GREEN}... Checking for existing SSH Tunnels ...${NOCOLOR}"
+  sshTarget="$1"
+  activeSSHSessions=$(lsof -i tcp | grep "^ssh" | grep ESTABLISHED)
+
+  if [ -z "$activeSSHSessions" ]; then
+  if [ -z "$1" ]; then
+    while true; do
+      echo -e "${GREEN}\n\
+      Enter the usual command arguments for SSH server\n\
+      e.g. admin@192.168.1.1\n\
+      or\n\
+      admin@fqdn -p 8822 -i /path/to/certificate.pem${NOCOLOR}\n"
+      ## Getting user input to fill $1 variable if unused - user didn't choose Option 2 "Select SSH Tunnel"
+      read -e -r -p "ssh " sshTarget
+      if [ -z "$sshTarget" ]; then
+        echo -e "${RED}*** you need to type something so the script can try to connect ***${NOCOLOR}" >&2
+      else
+        break
+      fi
+    done
+  fi
+    ################################################################################################
+    # Configuring SSH Tunnel                                                                       #
+    ################################################################################################
+    ## At this point the script will attempt to setup the SSH tunnel to target host.
+    ## If successful, will use the following flags:
+    ## -f = Requests ssh to go to background just before command execution.  This is useful if ssh is going to ask for passwords or passphrases
+    ## -N = Do not execute a remote command.  This is useful for just forwarding ports.
+    ## -M = Places the ssh client into "master" mode for connection sharing.
+    ## -S = ctl_path - Specifies the location of a control socket for connection sharing, or the string "none" to disable connection sharing
+    ##      Refer to the description of ControlPath and ControlMaster in ssh_config(5) for details.
+    ##      e.g. /tmp/sshtunnel
+    ## -D = [bind_address:]port - Specifies a local "dynamic" application-level port forwarding. 
+    ##      This works by allocating a socket to listen to port on the local side
+    ##      1080 is typical SOCKS Port.
+    echo -e "${GREEN}\n>>> Attempting connection\n\nUsing command: ssh -f -N -M -S /tmp/sshtunnel -D 1080 $sshTarget ${NOCOLOR}\n"
+    ssh -f -N -M -S /tmp/sshtunnel -D 1080 $sshTarget ##shellcheck gives an 'error', but we want word splitting here.
+    echo -e "${GREEN}\n>>> Checking for Established SSH Tunnels with: lsof -i tcp | grep ^ssh ${NOCOLOR}"
+    lsof -i tcp | grep ^ssh
+    ################################################################################################
+    # Configuring proxy settings under the 'Automatic' Location and only on the currently used NIC #
+    ################################################################################################
+    ## This will overwrite any pre-existing socks proxy settings for the targeted NIC
+    networksetup -setsocksfirewallproxy "$whichNic" 127.0.0.1 1080
+    echo -e "${GREEN}\nSOCKS settings for active NIC: $whichNic ${NOCOLOR}"
+    networksetup -getsocksfirewallproxy "$whichNic"
+
+    echo -e "${GREEN}\nDetected WAN IP addresses${NOCOLOR}"
+    echo -e "\nSOCKS Connection for Browser:"
+    ## Fix for curl leaving a % 'New line' character in output
+    ## https://unix.stackexchange.com/questions/167582/why-zsh-ends-a-line-with-a-highlighted-percent-symbol
+    curl -sS -x socks5h://localhost:1080 http://whatismyip.akamai.com/ ; echo
+    echo -e "*TIP: if using curl, type: curl -sS -x socks5h://localhost:1080 http://whatismyip.akamai.com/ ; echo"
+    echo -e "\nYour Computers Primary WAN IP:"
+    dig @resolver4.opendns.com myip.opendns.com +short
+    echo -e "${GREEN}\n>>> Keep terminal open until you are finished with SOCKS Proxy\n\nWhen ready select from options below${NOCOLOR}"
+  else
+    echo -e "${RED}\n!!! Existing SSH sessions are open !!!${NOCOLOR}\n"
+    echo -e "$activeSSHSessions\n"
+  fi
+
+  PS3="Select operation: "
+  options=("Close Tunnel" "Save Settings" "Exit Script")
+  select opt in "${options[@]}"
+  do
+    case $opt in
+      "Close Tunnel")
+        echo -e "${GREEN}\n>>> Closing SSH Tunnel, Tunring off SOCKS Proxy${NOCOLOR}\n"
+        killTunnel true
+        break
+        ;;
+      "Save Settings")
+
+        addHostToSSHConf "$sshTarget"
+        ;;
+      "Exit Script")
+        echo -e "${RED}!!! Quitting SSSHP Script !!!${NOCOLOR}"
+        killTunnel false
+        break
+        ;;
+      *)
+        echo -e "${RED}$REPLY*** Error: This is not a valid option ***${NOCOLOR}";;
+    esac
+  done
+
+}
+
+
+## END Option 1: Make SSH Tunnel
+##================================================================##
+## Option 2: Select SSH Tunnel
+
+function selectSSHTunnel () {
+
+  if grep name "$ssshpHosts"; then
+    echo -e "${GREEN}>>> Select SSH Tunnel from saved hosts in $ssshpHosts${NOCOLOR}"
+    ## Build list of all hosts saved from previous connections - stored in: "$HOME/.config/ssshp"
+    ##https://stackoverflow.com/questions/40558976/bash-script-use-command-output-to-dynamically-create-menu-and-arrays
+    #IFS=$'\n' read -d '' -ra lines < <(grep "Host " "$sshConfig" | grep -v '[*]'  | awk '{print $2}')
+    IFS=$'\n' read -d '' -ra lines < <(jq -r '.Host[] .name' "$ssshpHosts")
+    # Prompt the user to select one of the lines.
+    echo "Select the Host:"
+    select choice in "${lines[@]}"; do
+      [[ -n $choice ]] || { echo "Invalid choice. Please try again." >&2; continue; }
+      break # valid choice was made; exit prompt.
+    done
+    echo -e "${GREEN}\nYou selected: $choice\n${NOCOLOR}"
+    selectionSSHArgs=$(jq -r --arg choice "$choice" '.Host[] | select(.name==$choice) | .sshargs' "$ssshpHosts")
+    createSSHTunnel "$selectionSSHArgs"
+  else
+    echo -e "${RED}\n>>> No hosts to select from. Will Exit.\n${NOCOLOR}\n$ssshpHosts"
+    cat "$ssshpHosts"
+    exit 1
+  fi
+
+}
+
+
+## END Option 2: Select SSH Tunnel
+##================================================================##
+## This is the main menu 
+##https://askubuntu.com/questions/1705/how-can-i-create-a-select-menu-in-a-shell-script
+
+PS3="Select operation: "
+options=("Make SSH Tunnel" "Select SSH Tunnel" "Quit")
+select opt in "${options[@]}"
+do
+  case $opt in
+    "Make SSH Tunnel")
+      createSSHTunnel "$@"
+      break
+      ;;
+    "Select SSH Tunnel")
+      echo -e "${RED}*** This option might not work ***${NOCOLOR}"
+      selectSSHTunnel "$@"
+      break
+      ;;
+    "Quit")
+      break
+      ;;
+    *)
+      echo -e "${RED}$REPLY That wasn't a valid option${NOCOLOR}";;
+  esac
+done
+
+exit $?
