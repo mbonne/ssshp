@@ -20,7 +20,9 @@ Needs the following files: "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" (
 Needs jq installed: brew install jq
 
 ## How To Use:
-```sudo ./ssshp```
+```bash
+sudo ./ssshp
+```
 
 Then select from the menu.
 
@@ -37,13 +39,15 @@ Let user select from previously saved connections.
 
 The script is more or less a convoluted way to run a simple 1 liner
 
-```ssh -f -N -M -S /tmp/sshtunnel -D 1080 $sshTarget```
+```bash
+ssh -f -N -M -S /tmp/sshtunnel -D 1080 $sshTarget
+```
 
 And then modify your Network Preferences for primary NIC. Enabling SOCKS Proxy for local host over port 1080
 
 The following excerpt from script is where the actual connection is made. Everything else is just for building the menus, handling user input, saving connection details for later. Does not save passwords. Does not send telemetry data anywhere.
 
-```
+```bash
     ################################################################################################
     # Configuring SSH Tunnel                                                                       #
     ################################################################################################
