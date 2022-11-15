@@ -17,7 +17,7 @@ Needs root privilidges as it will change your active NIC Proxy settings.
 
 Needs the following files: "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" (Creates them if not found)
 
-Needs homebrew and jq installed: 
+Needs jq installed: 
 ```bash
 brew install jq
 ```
