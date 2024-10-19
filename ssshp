@@ -93,6 +93,8 @@ fi
 ## https://linuxize.com/post/using-the-ssh-config-file/
 sshConfig="$HOME/.ssh/config"
 if [ ! -f "$sshConfig" ]; then
+  mkdir -p "$HOME/.ssh"
+  chown "$currentUser":staff "$HOME/.ssh"
   touch "$sshConfig"
   chown "$currentUser":staff "$sshConfig"
   chmod 600 "$sshConfig"
@@ -108,6 +110,7 @@ fi
 
 ## I wasn't able to figure out how to use the "$HOME/.ssh/config" file only for the purpose of recalling the settings later.
 ## jq has made it slightly easier. TODO: workout a native method without jq using plutil or sed directly on "$HOME/.ssh/config"
+## with macOS Sequoia, jq looks to be distributed with the os.
 
 ##================================================================##
 ## Functions
