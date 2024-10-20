@@ -82,7 +82,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-## Check if you have jq installed. Can do this via $ brew install jq
+## Check if you have jq installed. Can install with `brew install jq`
 if [ ! -f "$(which jq)" ]; then
   echo -e "${RED}*** ERROR: you need to install cli tool jq to run this script ***${NOCOLOR}\n\nRun: brew install jq\n"
   exit 1

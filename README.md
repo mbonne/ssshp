@@ -10,9 +10,9 @@ Tested exclusivly on macOS. Initially created With macOS 12.6.1 Monterey.
 
 Tested on macOS 15.1 beta - 2024-10-19
 
-### Config file v Custom ssshpHosts.json file
+### Config file v Custom sshpHosts.json file
 
-The two files "$HOME/.ssh/config" and "$HOME/.ssh/ssshpHosts.json" could become out of sync.
+The two files "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" could become out of sync.
 
 The config file belongs to the users ssh install, ssshpHosts.json is built with this script.
 
