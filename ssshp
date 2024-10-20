@@ -5,22 +5,21 @@
 ##          Author:  mbonne
 ##         Purpose:  Creates a ssh tunnel and then enables socks proxy to allow web browsing via the remote host.
 ##         Created:  2022-11-06
-##   Last Modified:
-##         Version:  1
-##    Source Notes:
+##   Last Modified:   2024-10-19
+##         Version:  2
+##    Source Notes: *Links are all unaffiliated with this little project.
 ##                  https://blog.emacsos.com/use-socks5-proxy-in-curl.html
 ##                  https://unix.stackexchange.com/questions/22615/how-can-i-get-my-external-ip-address-in-a-shell-script
 ##                  https://www.hostdime.com/kb/hd/security/browsing-the-internet-through-an-ssh-tunnel-on-macos
 ###===============================================================##
 ## Known Limitations and Issues:
-## Works on macOS only. Tested with macOS 12.6.1 Monterey
-## The two files "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" could become out of sync.
+## Works on macOS only. Tested with macOS 12.6.1 Monterey and more recently with Sequoia Beta 15.1
+## The two files "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" could become out of sync. if manually adding to config. The script doesn't update the .json yet
 ##
 ## Dependancies:
-## Needs root privilidges as it will change your active NIC Proxy settings.
+## Needs 'sudo' as it changes your active NIC Proxy settings.
 ## Needs the following files: "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" (Creates them if not found)
-## Needs jq installed: brew install jq
-##
+## Needs jq installed, can use `brew install jq`
 ## How To Use:
 ## sudo ./ssshp
 ##

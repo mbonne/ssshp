@@ -1,29 +1,34 @@
-# SOCKS SSH Proxy
+# SOCKS SSH Proxy aka ssshp
+
 An automated way to setup a Proxy connection over SSH for macOS
 
-## Inspiration taken from here
-https://www.hostdime.com/kb/hd/security/browsing-the-internet-through-an-ssh-tunnel-on-macos
+## Known Limitations and Issues
 
-https://linuxize.com/post/using-the-ssh-config-file/
+### OS
 
+Tested exclusivly on macOS. Initially created With macOS 12.6.1 Monterey.
 
-### Known Limitations and Issues:
-Works on macOS only. Tested with macOS 12.6.1 Monterey
+Tested on macOS 15.1 beta - 2024-10-19
 
-The two files "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" could become out of sync.
+### Config file v Custom ssshpHosts.json file
 
-### Dependancies:
-Needs root privilidges as it will change your active NIC Proxy settings.
+The two files "$HOME/.ssh/config" and "$HOME/.ssh/ssshpHosts.json" could become out of sync.
+
+The config file belongs to the users ssh install, ssshpHosts.json is built with this script.
+
+### Dependancies
+
+Needs sudo to run correctly as it needs to change your active NIC Proxy settings.
 
 Needs the following files: "$HOME/.ssh/config" and "$HOME/.ssh/sshpHosts.json" (Creates them if not found)
 
-Needs jq installed: https://stedolan.github.io/jq/download/
-```bash
-brew install jq
-```
+Needs jq installed: <https://stedolan.github.io/jq/download/>
 
-## How To Use:
-```bash
+## How To Use
+
+>Tip: Run from custom 'bin' folder added to your $PATH
+
+```sh
 sudo ./ssshp
 ```
 
@@ -31,26 +36,30 @@ Then select from the menu.
 
 1. "Make SSH Tunnel"
 
-Takes user input, establishes SSH tunnel and enable SOCKS Proxy on active NIC.
-Presents user with options to, 1. Close connection gracefully, 2. Save settings for later, 3. Exit script and keep connection open.
+    Takes user input, establishes SSH tunnel and enable SOCKS Proxy on active NIC.
+    Presents user with options to, 1. Close connection gracefully, 2. Save settings for later, 3. Exit script and keep connection open.
 
 2. "Select SSH Tunnel"
 
-Let user select from previously saved connections.
+    Let user select from previously saved connections.
+
+>See file: `ssshp-example.md` For example useage.
 
 ## But what is this script doing exactly?
 
 The script is more or less a convoluted way to run a simple 1 liner
 
-```bash
+```sh
 ssh -f -N -M -S /tmp/sshtunnel -D 1080 $sshTarget
 ```
 
 And then modify your Network Preferences for primary NIC. Enabling SOCKS Proxy for local host over port 1080
 
-The following excerpt from script is where the actual connection is made. Everything else is just for building the menus, handling user input, saving connection details for later. Does not save passwords. Does not send telemetry data anywhere.
+The following excerpt from script is where the actual connection is made. Everything else is just for building the menus, handling user input, saving connection details for later.
 
-```bash
+>Does not save passwords. Does not send telemetry data anywhere.
+
+```sh
     ################################################################################################
     # Configuring SSH Tunnel                                                                       #
     ################################################################################################
